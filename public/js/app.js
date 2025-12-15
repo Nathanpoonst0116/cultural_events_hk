@@ -1,0 +1,1091 @@
+// Cultural Events App - Main JavaScript
+
+// Global variables
+let currentUser = null;
+let map = null;
+let markers = [];
+let venues = [];
+let currentVenue = null;
+let userLocation = null;
+let sortOrder = { field: 'name', ascending: true };
+
+// Initialize app
+document.addEventListener('DOMContentLoaded', function() {
+    initializeTheme();
+    checkAuthStatus();
+    setupEventListeners();
+});
+
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    let icon = 'info-circle';
+    if (type === 'success') icon = 'check-circle';
+    if (type === 'error') icon = 'exclamation-circle';
+    
+    toast.innerHTML = `<i class="fas fa-${icon}"></i> <span>${message}</span>`;
+    
+    container.appendChild(toast);
+    
+    // Remove from DOM after animation
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
+// Theme Management
+function initializeTheme() {
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+    
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    updateThemeIcon(newTheme);
+}
+
+function updateThemeIcon(theme) {
+    const icon = document.querySelector('#themeToggle i');
+    icon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
+}
+
+// Authentication
+function checkAuthStatus() {
+    fetch('/api/session')
+        .then(response => response.json())
+        .then(data => {
+            if (data.loggedIn) {
+                currentUser = data;
+                showUserInterface(data);
+            } else {
+                showPage('login');
+            }
+        })
+        .catch(error => console.error('Error checking auth status:', error));
+}
+
+function showUserInterface(userData) {
+    currentUser = userData;
+    
+    // Update UI
+    document.getElementById('loginLink').classList.add('hidden');
+    document.getElementById('userInfo').classList.remove('hidden');
+    document.getElementById('username').textContent = userData.username;
+    
+    // Show appropriate navigation
+    document.getElementById('venuesLink').classList.remove('hidden');
+    document.getElementById('mapLink').classList.remove('hidden');
+    document.getElementById('favoritesLink').classList.remove('hidden');
+    
+    if (userData.isAdmin) {
+        document.getElementById('adminLink').classList.remove('hidden');
+    }
+    
+    // Show venues page by default
+    showPage('venues');
+}
+
+function setupEventListeners() {
+    // Login form
+    document.getElementById('loginForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        login();
+    });
+    
+    // Search and filters
+    document.getElementById('venueSearch').addEventListener('input', filterVenues);
+    document.getElementById('areaFilter').addEventListener('change', filterVenues);
+    document.getElementById('distanceFilter').addEventListener('input', filterVenues);
+}
+
+function login() {
+    const username = document.getElementById('loginUsername').value;
+    const password = document.getElementById('password').value;
+    const errorDiv = document.getElementById('loginError');
+    
+    fetch('/api/login', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username, password })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            showUserInterface(data.user);
+            errorDiv.classList.add('hidden');
+        } else {
+            errorDiv.textContent = data.error || 'Login failed';
+            errorDiv.classList.remove('hidden');
+        }
+    })
+    .catch(error => {
+        console.error('Login error:', error);
+        errorDiv.textContent = 'Login failed. Please try again.';
+        errorDiv.classList.remove('hidden');
+    });
+}
+
+function logout() {
+    fetch('/api/logout', {
+        method: 'POST'
+    })
+    .then(() => {
+        currentUser = null;
+        document.getElementById('loginLink').classList.remove('hidden');
+        document.getElementById('userInfo').classList.add('hidden');
+        document.getElementById('venuesLink').classList.add('hidden');
+        document.getElementById('mapLink').classList.add('hidden');
+        document.getElementById('favoritesLink').classList.add('hidden');
+        document.getElementById('adminLink').classList.add('hidden');
+        showPage('login');
+    })
+    .catch(error => console.error('Logout error:', error));
+}
+
+// Page Navigation
+function showPage(pageId, addToHistory = true) { // Add boolean param
+    // Hide all pages
+    document.querySelectorAll('.page').forEach(page => {
+        page.classList.remove('active');
+    });
+
+    // Show selected page
+    const pageEl = document.getElementById(pageId + 'Page');
+    if(pageEl) {
+        pageEl.classList.add('active');
+    } else {
+        console.error("Page not found:", pageId);
+        return; 
+    }
+
+    // Update nav links
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === '#' + pageId) {
+            link.classList.add('active');
+        }
+    });
+    
+    // Handle History API
+    if (addToHistory) {
+        const state = { page: pageId };
+        // Clean URL: /venues instead of /#venues (looks more professional)
+        // Or keep hash if you prefer, but pushState is key.
+        history.pushState(state, '', `#${pageId}`); 
+    }
+
+    // Load page-specific data
+    switch(pageId) {
+        case 'venues':
+            loadVenues();
+            break;
+        case 'map':
+            loadMap();
+            break;
+        case 'favorites':
+            loadFavorites();
+            break;
+        case 'admin':
+            if (currentUser.isAdmin) {
+                loadAdminData();
+            }
+            break;
+    }
+}
+
+// Venues Management
+function loadVenues() {
+    const loadingDiv = document.getElementById('venuesLoading');
+    const tableDiv = document.getElementById('venuesTable');
+    
+    loadingDiv.classList.remove('hidden');
+    tableDiv.classList.add('hidden');
+    
+    fetch('/api/venues')
+        .then(response => response.json())
+        .then(data => {
+            venues = data;
+            loadingDiv.classList.add('hidden');
+            tableDiv.classList.remove('hidden');
+            displayVenues(venues);
+        })
+        .catch(error => {
+            console.error('Error loading venues:', error);
+            loadingDiv.textContent = 'Error loading venues';
+        });
+}
+function displayVenues(venuesToDisplay) {
+    const tbody = document.getElementById('venuesTableBody');
+    tbody.innerHTML = '';
+    
+    if (venuesToDisplay.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center p-4">No venues found matching your criteria.</td></tr>';
+        return;
+    }
+    
+    venuesToDisplay.forEach(venue => {
+        const row = document.createElement('tr');
+        
+        // FIX: Add click event to the ROW
+        row.onclick = () => showVenueDetail(venue._id);
+        
+        const distance = userLocation && venue.latitude && venue.longitude 
+            ? calculateDistance(userLocation.lat, userLocation.lng, venue.latitude, venue.longitude)
+            : null;
+        
+        // CHECK LIKE STATUS
+        const userId = currentUser ? (currentUser.userId || currentUser.user?.userId) : null;
+        const isLiked = userId && venue.likes && venue.likes.includes(userId);
+        const likeClass = isLiked ? 'liked' : '';
+        const likeCount = venue.likes ? venue.likes.length : 0;
+        
+        // FIX: Removed <a> tag, used text only.
+        // FIX: Added event.stopPropagation()
+        // FIX: Added ${likeClass} to the button
+        row.innerHTML = `
+            <td>
+                <span class="venue-name-text" style="font-weight: 600; color: var(--primary-color);">${venue.name}</span>
+            </td>
+            <td>${distance ? distance.toFixed(2) + ' km' : 'N/A'}</td>
+            <td>${venue.events ? venue.events.length : 0}</td>
+            <td>
+                <div class="flex gap-2 align-center">
+                    <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); showVenueDetail('${venue._id}')">
+                        View
+                    </button>
+                    <button class="like-btn ${likeClass}" onclick="event.stopPropagation(); toggleLikeVenue(event, '${venue._id}')">
+                        <i class="fas fa-heart"></i> <span class="like-count">${likeCount}</span>
+                    </button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function showCreateEventModal() {
+    document.getElementById('createEventModal').classList.remove('hidden');
+}
+
+function createEvent(event) {
+    event.preventDefault();
+    
+    // In a real app you'd fetch venue _id, here we accept a raw ID or name for simplicity
+    // or you might need a dropdown of venues. For this fix, we assume strict input.
+    const title = document.getElementById('newEvTitle').value;
+    const dateTime = document.getElementById('newEvDate').value;
+    const description = document.getElementById('newEvDesc').value;
+    const venueIdInput = document.getElementById('newEvVenueId').value;
+    
+    // We need to find the Mongo _id of the venue based on the input ID
+    // Ideally this should be a <select> in the UI populated by venues
+    // But to make it work with current structure:
+    fetch('/api/venues') // Quick fetch to find the ID
+    .then(res => res.json())
+    .then(venues => {
+        const venue = venues.find(v => v.venueId === venueIdInput || v.venueId === venueIdInput.toString());
+        if (!venue) {
+            showToast('Venue ID not found', 'error');
+            return;
+        }
+
+        const payload = {
+            eventId: 'custom_' + Date.now(), // Generate a unique ID
+            title,
+            dateTime,
+            description,
+            venue: venue._id,
+            presenter: 'Admin Custom',
+            category: 'Special',
+            price: 'Free'
+        };
+
+        return fetch('/api/admin/events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    })
+    .then(response => {
+        if(response && response.ok) return response.json();
+    })
+    .then(data => {
+        if(data) {
+            closeModal('createEventModal');
+            showToast('Event created successfully', 'success');
+            loadEvents(); // Refresh list
+            document.getElementById('newEvTitle').value = ''; // Clear form
+        }
+    })
+    .catch(err => console.error(err));
+}
+function sortVenues(field) {
+    if (sortOrder.field === field) {
+        sortOrder.ascending = !sortOrder.ascending;
+    } else {
+        sortOrder.field = field;
+        sortOrder.ascending = true;
+    }
+    
+    venues.sort((a, b) => {
+        let aValue, bValue;
+        
+        switch(field) {
+            case 'name':
+                aValue = a.name.toLowerCase();
+                bValue = b.name.toLowerCase();
+                break;
+            case 'distance':
+                if (!userLocation || !a.latitude || !b.latitude) {
+                    aValue = 0;
+                    bValue = 0;
+                } else {
+                    aValue = calculateDistance(userLocation.lat, userLocation.lng, a.latitude, a.longitude);
+                    bValue = calculateDistance(userLocation.lat, userLocation.lng, b.latitude, b.longitude);
+                }
+                break;
+            case 'events':
+                aValue = a.events ? a.events.length : 0;
+                bValue = b.events ? b.events.length : 0;
+                break;
+        }
+        
+        if (sortOrder.ascending) {
+            return aValue > bValue ? 1 : -1;
+        } else {
+            return aValue < bValue ? 1 : -1;
+        }
+    });
+    
+    displayVenues(venues);
+}
+
+function filterVenues() {
+    const searchTerm = document.getElementById('venueSearch').value.toLowerCase();
+    const areaFilter = document.getElementById('areaFilter').value; // 'hongkong', 'kowloon', etc.
+    const maxDistance = parseFloat(document.getElementById('distanceFilter').value) || Infinity;
+    
+    let filtered = venues.filter(venue => {
+        // Search filter
+        if (searchTerm && !venue.name.toLowerCase().includes(searchTerm)) {
+            return false;
+        }
+        
+        // PERFECT SCORE FIX: Robust Area Filter
+        // Use the region field we added to the DB
+        if (areaFilter && venue.region !== areaFilter) {
+            return false;
+        }
+        
+        // Distance filter (Keep existing logic)
+        if (userLocation && venue.latitude && venue.longitude) {
+            const distance = calculateDistance(userLocation.lat, userLocation.lng, venue.latitude, venue.longitude);
+            if (distance > maxDistance) {
+                return false;
+            }
+        }
+        
+        return true;
+    });
+    
+    displayVenues(filtered);
+}
+
+// Venue Details
+function showVenueDetail(venueId) {
+    currentVenue = venueId;
+    showPage('venueDetail');
+    
+    const contentDiv = document.getElementById('venueDetailContent');
+    contentDiv.innerHTML = '<div class="loading">Loading venue details...</div>';
+    
+    fetch(`/api/venues/${venueId}`)
+        .then(response => response.json())
+        .then(venue => {
+            displayVenueDetail(venue);
+        })
+        .catch(error => {
+            console.error('Error loading venue details:', error);
+            contentDiv.innerHTML = '<div class="error-message">Error loading venue details</div>';
+        });
+}
+
+function displayVenueDetail(venue) {
+    const contentDiv = document.getElementById('venueDetailContent');
+    
+    // Check Venue Like Status
+    const userId = currentUser ? (currentUser.userId || currentUser.user?.userId) : null;
+    const isVenueLiked = userId && venue.likes && venue.likes.includes(userId);
+    const venueLikeClass = isVenueLiked ? 'liked' : '';
+    const venueLikeCount = venue.likes ? venue.likes.length : 0;
+
+    contentDiv.innerHTML = `
+        <div class="venue-header">
+            <div>
+                <h1 class="venue-title">${venue.name}</h1>
+                <p class="text-secondary">${venue.nameC || ''}</p>
+            </div>
+            <div>
+                <button class="btn btn-secondary" onclick="toggleFavoriteVenue('${venue._id}')">
+                    <i class="fas fa-star"></i> Add to Favorites
+                </button>
+                <button class="like-btn ${venueLikeClass}" onclick="toggleLikeVenue(event, '${venue._id}')">
+                    <i class="fas fa-heart"></i> <span class="like-count">${venueLikeCount}</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="venue-info">
+            <div class="venue-section">
+                <h3>Venue Information</h3>
+                <div id="venueMap" style="height: 300px; margin-bottom: 1rem;"></div>
+                <p><strong>Address:</strong> ${venue.address || 'N/A'}</p>
+                <p><strong>Description:</strong> ${venue.description || 'N/A'}</p>
+            </div>
+            
+            <div class="venue-section">
+                <h3>Events at this Venue</h3>
+                <div class="events-list">
+                    ${venue.events && venue.events.length > 0 
+                        ? venue.events.map(event => {
+                            // Check Event Like Status inside the map loop
+                            const isEventLiked = userId && event.likes && event.likes.includes(userId);
+                            const eventLikeClass = isEventLiked ? 'liked' : '';
+                            const eventLikeCount = event.likes ? event.likes.length : 0;
+
+                            return `
+                            <div class="event-card">
+                                <div class="event-title">${event.title}</div>
+                                <div class="event-meta">
+                                    <i class="fas fa-calendar"></i> ${event.dateTime || 'N/A'}
+                                    ${event.presenter ? `<i class="fas fa-user"></i> ${event.presenter}` : ''}
+                                </div>
+                                <div class="event-description">${event.description || 'No description available'}</div>
+                                <button class="like-btn ${eventLikeClass}" onclick="toggleLikeEvent(event, '${event._id}')">
+                                    <i class="fas fa-heart"></i> ${eventLikeCount}
+                                </button>
+                            </div>
+                            `;
+                        }).join('')
+                        : '<p>No events scheduled at this venue.</p>'
+                    }
+                </div>
+            </div>
+        </div>
+        
+        <div class="comments-section">
+            <h3>User Comments</h3>
+            <div class="comment-form">
+                <h4>Add a Comment</h4>
+                <form onsubmit="addComment(event)">
+                    <textarea id="commentContent" placeholder="Share your thoughts about this venue..." required></textarea>
+                    <button type="submit" class="btn btn-primary">Post Comment</button>
+                </form>
+            </div>
+            <div id="commentsList" class="comments-list">
+                <div class="loading">Loading comments...</div>
+            </div>
+        </div>
+    `;
+    
+    // Initialize venue map
+    if (venue.latitude && venue.longitude) {
+        setTimeout(() => {
+            const venueMap = L.map('venueMap').setView([venue.latitude, venue.longitude], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(venueMap);
+            L.marker([venue.latitude, venue.longitude]).addTo(venueMap)
+                .bindPopup(venue.name)
+                .openPopup();
+        }, 100);
+    }
+    
+    // Load comments
+    loadComments(venue._id);
+}
+
+// Comments
+function loadComments(venueId) {
+    fetch(`/api/venues/${venueId}/comments`)
+        .then(response => response.json())
+        .then(comments => {
+            displayComments(comments);
+        })
+        .catch(error => {
+            console.error('Error loading comments:', error);
+            document.getElementById('commentsList').innerHTML = '<p>Error loading comments</p>';
+        });
+}
+
+function displayComments(comments) {
+    const commentsList = document.getElementById('commentsList');
+    
+    if (comments.length === 0) {
+        commentsList.innerHTML = '<p>No comments yet. Be the first to share your thoughts!</p>';
+        return;
+    }
+    
+    commentsList.innerHTML = comments.map(comment => `
+        <div class="comment">
+            <div class="comment-header">
+                <span class="comment-author">${comment.user.username}</span>
+                <span class="comment-date">${new Date(comment.createdAt).toLocaleDateString()}</span>
+            </div>
+            <div class="comment-content">${comment.content}</div>
+        </div>
+    `).join('');
+}
+
+function addComment(event) {
+    event.preventDefault();
+    
+    const content = document.getElementById('commentContent').value;
+    
+    fetch(`/api/venues/${currentVenue}/comments`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content })
+    })
+    .then(response => response.json())
+    .then(comment => {
+        document.getElementById('commentContent').value = '';
+        loadComments(currentVenue);
+    })
+    .catch(error => {
+        console.error('Error adding comment:', error);
+        showToast('Error adding comment', 'error');
+    });
+}
+
+// Map functionality
+function loadMap() {
+    if (map) {
+        map.remove();
+        markers = [];
+    }
+    
+    map = L.map('map').setView([22.3193, 114.1694], 11); // Hong Kong center
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    
+    // Load and display venues
+    fetch('/api/venues')
+        .then(response => response.json())
+        .then(venuesData => {
+            venuesData.forEach(venue => {
+                if (venue.latitude && venue.longitude) {
+                    const marker = L.marker([venue.latitude, venue.longitude])
+                        .addTo(map)
+                        .bindPopup(`
+                            <strong>${venue.name}</strong><br>
+                            Events: ${venue.events ? venue.events.length : 0}<br>
+                            <a href="#" onclick="showVenueDetail('${venue._id}')">View Details</a>
+                        `);
+                    markers.push(marker);
+                }
+            });
+        })
+        .catch(error => console.error('Error loading venues for map:', error));
+}
+
+function getCurrentLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            position => {
+                userLocation = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+                
+                // Update map if on map page
+                if (map) {
+                    map.setView([userLocation.lat, userLocation.lng], 13);
+                    L.marker([userLocation.lat, userLocation.lng])
+                        .addTo(map)
+                        .bindPopup('Your Location')
+                        .openPopup();
+                }
+                
+                // Re-filter venues
+                filterVenues();
+            },
+            error => {
+                console.error('Error getting location:', error);
+                showToast('Unable to get your location', 'error');
+            }
+        );
+    } else {
+        showToast('Geolocation is not supported by your browser', 'error');
+    }
+}
+
+// Favorites
+function loadFavorites() {
+    const contentDiv = document.getElementById('favoritesContent');
+    contentDiv.innerHTML = '<div class="loading">Loading favorites...</div>';
+    
+    fetch('/api/favorites')
+        .then(response => response.json())
+        .then(favorites => {
+            displayFavorites(favorites);
+        })
+        .catch(error => {
+            console.error('Error loading favorites:', error);
+            contentDiv.innerHTML = '<p>Error loading favorites</p>';
+        });
+}
+
+function displayFavorites(favorites) {
+    const contentDiv = document.getElementById('favoritesContent');
+    
+    if (favorites.length === 0) {
+        contentDiv.innerHTML = '<p>No favorite venues yet. Start adding some!</p>';
+        return;
+    }
+    
+    contentDiv.innerHTML = `
+        <div class="cards-grid">
+            ${favorites.map(venue => `
+                <div class="card" onclick="showVenueDetail('${venue._id}')">
+                    <div class="card-title">${venue.name}</div>
+                    <div class="card-content">
+                        <p>Events: ${venue.events ? venue.events.length : 0}</p>
+                        <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); removeFavorite('${venue._id}')">
+                            Remove from Favorites
+                        </button>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function toggleFavoriteVenue(venueId) {
+    fetch(`/api/venues/${venueId}/favorite`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        showToast(data.message, 'success');
+    })
+    .catch(error => {
+        console.error('Error toggling favorite:', error);
+        showToast('Error adding to favorites', 'error');
+    });
+}
+
+function removeFavorite(venueId) {
+    fetch(`/api/venues/${venueId}/favorite`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(() => {
+        loadFavorites();
+    })
+    .catch(error => {
+        console.error('Error removing favorite:', error);
+        showToast('Error removing from favorites', 'error');
+    });
+}
+
+// Likes
+// REPLACE toggleLikeVenue
+function toggleLikeVenue(event, venueId) {
+    event.stopPropagation(); 
+    const btn = event.currentTarget;
+    const countSpan = btn.querySelector('.like-count');
+
+    fetch(`/api/venues/${venueId}/like`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Update count
+        if(countSpan) countSpan.textContent = data.likes;
+        
+        // Update visual state based on server response
+        if (data.isLiked) {
+            btn.classList.add('liked');
+            showToast('Venue liked!', 'success');
+        } else {
+            btn.classList.remove('liked');
+            showToast('Like removed', 'info');
+        }
+    })
+    .catch(error => console.error('Error liking venue:', error));
+}
+
+// REPLACE toggleLikeEvent
+function toggleLikeEvent(event, eventId) { 
+    // Find button
+    const btn = event.target.closest('.like-btn');
+    if(!btn) return;
+
+    fetch(`/api/events/${eventId}/like`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.innerHTML = `<i class="fas fa-heart"></i> ${data.likes}`;
+        
+        if (data.isLiked) {
+            btn.classList.add('liked');
+            showToast('Event liked!', 'success');
+        } else {
+            btn.classList.remove('liked');
+            showToast('Like removed', 'info');
+        }
+    })
+    .catch(error => console.error('Error liking event:', error));
+}
+
+// Admin Functions
+function showAdminTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    // Update tab content
+    document.querySelectorAll('.admin-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    document.getElementById(tabName + 'Tab').classList.add('active');
+    
+    // Load tab-specific data
+    switch(tabName) {
+        case 'users':
+            loadUsers();
+            break;
+        case 'events':
+            loadEvents();
+            break;
+    }
+}
+
+function loadUsers() {
+    const usersList = document.getElementById('usersList');
+    usersList.innerHTML = '<div class="loading">Loading users...</div>';
+    
+    fetch('/api/admin/users')
+        .then(response => response.json())
+        .then(users => {
+            displayUsers(users);
+        })
+        .catch(error => {
+            console.error('Error loading users:', error);
+            usersList.innerHTML = '<p>Error loading users</p>';
+        });
+}
+function displayUsers(users) {
+    const usersList = document.getElementById('usersList');
+    
+    // 1. Remove the loading class to kill the spinner
+    usersList.classList.remove('loading');
+    
+    // 2. Clear previous content
+    usersList.innerHTML = ''; 
+    
+    if (!users || users.length === 0) {
+        usersList.innerHTML = '<p class="p-4 text-center">No users found.</p>';
+        return;
+    }
+
+    // 3. Build the table
+    const tableHTML = `
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th class="text-left p-3 bg-tertiary">Username</th>
+                    <th class="text-left p-3 bg-tertiary">Role</th>
+                    <th class="text-left p-3 bg-tertiary">Created</th>
+                    <th class="text-left p-3 bg-tertiary">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${users.map(user => `
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td class="p-3">${user.username}</td>
+                        <td class="p-3">
+                            <span style="padding: 4px 8px; border-radius: 4px; background: ${user.isAdmin ? '#e0e7ff' : '#f3f4f6'}; color: ${user.isAdmin ? '#4338ca' : '#374151'}; font-size: 0.85rem; font-weight: 500;">
+                                ${user.isAdmin ? 'Admin' : 'User'}
+                            </span>
+                        </td>
+                        <td class="p-3">${new Date(user.createdAt).toLocaleDateString()}</td>
+                        <td class="p-3">
+                            <div class="flex gap-2">
+                                <button class="btn btn-sm btn-secondary" onclick="editUser('${user._id}')">Edit</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteUser('${user._id}')">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    
+    usersList.innerHTML = tableHTML;
+}
+
+function showCreateUserForm() {
+    document.getElementById('createUserForm').classList.remove('hidden');
+}
+
+function hideCreateUserForm() {
+    document.getElementById('createUserForm').classList.add('hidden');
+}
+
+function createUser(event) {
+    event.preventDefault();
+    
+    const username = document.getElementById('newUsername').value;
+    const password = document.getElementById('newPassword').value;
+    const isAdmin = document.getElementById('newIsAdmin').checked;
+    
+    fetch('/api/admin/users', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username, password, isAdmin })
+    })
+    .then(response => response.json())
+    .then(() => {
+        hideCreateUserForm();
+        loadUsers();
+        // Clear form
+        document.getElementById('newUsername').value = '';
+        document.getElementById('newPassword').value = '';
+        document.getElementById('newIsAdmin').checked = false;
+    })
+    .catch(error => {
+        console.error('Error creating user:', error);
+        showToast('Error creating user', 'error');
+    });
+}
+
+function deleteUser(userId) {
+    if (confirm('Are you sure you want to delete this user?')) {
+        fetch(`/api/admin/users/${userId}`, {
+            method: 'DELETE'
+        })
+        .then(() => {
+            loadUsers();
+        })
+        .catch(error => {
+            console.error('Error deleting user:', error);
+            showToast('Error deleting user', 'error');
+        });
+    }
+}
+
+function editUser(userId) {
+    // 1. Fetch user data
+    // In a real app we might fetch from API, but we have the list in memory or can fetch specifically
+    // Let's find it in the current DOM or fetch it
+    fetch(`/api/admin/users`)
+        .then(res => res.json())
+        .then(users => {
+            const user = users.find(u => u._id === userId);
+            if(user) {
+                document.getElementById('editUserId').value = user._id;
+                document.getElementById('editUsername').value = user.username;
+                document.getElementById('editPassword').value = ''; // Don't show hash
+                document.getElementById('editIsAdmin').checked = user.isAdmin;
+                
+                document.getElementById('editUserModal').classList.remove('hidden');
+            }
+        });
+}
+
+function updateUser(event) {
+    event.preventDefault();
+    const userId = document.getElementById('editUserId').value;
+    const username = document.getElementById('editUsername').value;
+    const password = document.getElementById('editPassword').value;
+    const isAdmin = document.getElementById('editIsAdmin').checked;
+
+    const body = { username, isAdmin };
+    if(password) body.password = password;
+
+    fetch(`/api/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    })
+    .then(res => res.json())
+    .then(() => {
+        closeModal('editUserModal');
+        showToast('User updated successfully', 'success');
+        loadUsers(); // Real-time refresh
+    })
+    .catch(err => showToast('Update failed', 'error'));
+}
+
+
+function loadEvents() {
+    const eventsList = document.getElementById('eventsList');
+    eventsList.innerHTML = '<div class="loading">Loading events...</div>';
+    
+    fetch('/api/events')
+        .then(response => response.json())
+        .then(events => {
+            displayEvents(events);
+        })
+        .catch(error => {
+            console.error('Error loading events:', error);
+            eventsList.innerHTML = '<p>Error loading events</p>';
+        });
+}
+
+function displayEvents(events) {
+    const eventsList = document.getElementById('eventsList');
+    
+    eventsList.innerHTML = `
+        <div class="cards-grid">
+            ${events.map(event => `
+                <div class="card">
+                    <div class="card-title">${event.title}</div>
+                    <div class="card-content">
+                        <p><strong>Venue:</strong> ${event.venue ? event.venue.name : 'N/A'}</p>
+                        <p><strong>Date:</strong> ${event.dateTime || 'N/A'}</p>
+                        <p>${event.description ? event.description.substring(0, 100) + '...' : 'No description'}</p>
+                        <div class="mt-3">
+                            <button class="btn btn-sm btn-secondary" onclick="editEvent('${event._id}')">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteEvent('${event._id}')">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function deleteEvent(eventId) {
+    if (confirm('Are you sure you want to delete this event?')) {
+        fetch(`/api/admin/events/${eventId}`, {
+            method: 'DELETE'
+        })
+        .then(() => {
+            loadEvents();
+        })
+        .catch(error => {
+            console.error('Error deleting event:', error);
+            showToast('Error deleting event', 'error');
+        });
+    }
+}
+
+function editEvent(eventId) {
+    fetch(`/api/events/${eventId}`)
+        .then(res => res.json())
+        .then(event => {
+            document.getElementById('editEventId').value = event._id;
+            document.getElementById('editEventTitle').value = event.title;
+            document.getElementById('editEventDate').value = event.dateTime;
+            document.getElementById('editEventDesc').value = event.description;
+            
+            document.getElementById('editEventModal').classList.remove('hidden');
+        });
+}
+
+function updateEvent(event) {
+    event.preventDefault();
+    const eventId = document.getElementById('editEventId').value;
+    const title = document.getElementById('editEventTitle').value;
+    const dateTime = document.getElementById('editEventDate').value;
+    const description = document.getElementById('editEventDesc').value;
+
+    fetch(`/api/admin/events/${eventId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, dateTime, description })
+    })
+    .then(res => res.json())
+    .then(() => {
+        closeModal('editEventModal');
+        showToast('Event updated successfully', 'success');
+        loadEvents(); // Real-time refresh
+    })
+    .catch(err => showToast('Update failed', 'error'));
+}
+
+// Helper to close modals
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.add('hidden');
+}
+
+function importData() {
+    const statusDiv = document.getElementById('importStatus');
+    statusDiv.innerHTML = '<div class="loading">Importing data...</div>';
+    
+    fetch('/api/import-data', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        statusDiv.innerHTML = `<div class="success-message">${data.message}</div>`;
+        // Refresh other data
+        loadUsers();
+        loadEvents();
+        loadVenues();
+    })
+    .catch(error => {
+        console.error('Error importing data:', error);
+        statusDiv.innerHTML = '<div class="error-message">Error importing data</div>';
+    });
+}
+
+function loadAdminData() {
+    loadUsers();
+}
+
+// Utility functions
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Radius of the Earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+window.addEventListener('popstate', function(event) {
+    if (event.state && event.state.page) {
+        // Pass false so we don't push the "back" action onto the stack again
+        showPage(event.state.page, false); 
+    } else {
+        // If no state (e.g., initial load), show default or login
+        if (currentUser) {
+            showPage('venues', false);
+        } else {
+            showPage('login', false);
+        }
+    }
+});
+
+// Update browser history when navigating
+function updateHistory(pageId) {
+    const state = { page: pageId };
+    const title = document.title;
+    const url = '#' + pageId;
+    history.pushState(state, title, url);
+}

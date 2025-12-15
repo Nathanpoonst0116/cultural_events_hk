@@ -1,0 +1,15 @@
+./.env
+./.gitignore
+./INSTALLATION_GUIDE.md
+./PROJECT_REPORT.md
+./README.md
+./README_SIMPLIFIED.md
+./eventDates.xml
+./events.xml
+./package-lock.json
+./package.json
+./server.js
+./start.sh
+./todo.md
+./venues.xml
+./verify-installation.js
