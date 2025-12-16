@@ -73,23 +73,21 @@ function checkAuthStatus() {
 
 function showUserInterface(userData) {
     currentUser = userData;
-    
-    // Update UI
+
     document.getElementById('loginLink').classList.add('hidden');
     document.getElementById('userInfo').classList.remove('hidden');
     document.getElementById('username').textContent = userData.username;
-    
-    // Show appropriate navigation
+
     document.getElementById('venuesLink').classList.remove('hidden');
     document.getElementById('mapLink').classList.remove('hidden');
     document.getElementById('favoritesLink').classList.remove('hidden');
-    
     if (userData.isAdmin) {
         document.getElementById('adminLink').classList.remove('hidden');
     }
-    
-    // Show venues page by default
-    showPage('venues');
+
+    // Respect the current hash if present; otherwise default to venues
+    const initialPage = (location.hash && location.hash.substring(1)) || 'venues';
+    showPage(initialPage);
 }
 
 function setupEventListeners() {
@@ -1070,11 +1068,13 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 window.addEventListener('popstate', function(event) {
     if (event.state && event.state.page) {
-        // Pass false so we don't push the "back" action onto the stack again
-        showPage(event.state.page, false); 
+        showPage(event.state.page, false);
     } else {
-        // If no state (e.g., initial load), show default or login
-        if (currentUser) {
+        // Prefer routing by current hash if available
+        const hashPage = (location.hash && location.hash.substring(1)) || null;
+        if (hashPage) {
+            showPage(hashPage, false);
+        } else if (currentUser) {
             showPage('venues', false);
         } else {
             showPage('login', false);

@@ -16,11 +16,11 @@
             <div class="header-content">
                 <div class="logo">Cultural Events HK</div>
                 <nav class="nav-links">
-                    <a href="#login" class="nav-link" id="loginLink" onclick="showPage('login')">Login</a>
-                    <a href="#venues" class="nav-link hidden" id="venuesLink" onclick="showPage('venues')">Venues</a>
-                    <a href="#map" class="nav-link hidden" id="mapLink" onclick="showPage('map')">Map</a>
-                    <a href="#favorites" class="nav-link hidden" id="favoritesLink" onclick="showPage('favorites')">Favorites</a>
-                    <a href="#admin" class="nav-link hidden" id="adminLink" onclick="showPage('admin')">Admin</a>
+                    <a href="#login" class="nav-link" id="loginLink" onclick="showPage('login'); return false;">Login</a>
+                    <a href="#venues" class="nav-link hidden" id="venuesLink" onclick="showPage('venues'); return false;">Venues</a>
+                    <a href="#map" class="nav-link hidden" id="mapLink" onclick="showPage('map'); return false;">Map</a>
+                    <a href="#favorites" class="nav-link hidden" id="favoritesLink" onclick="showPage('favorites'); return false;">Favorites</a>
+                    <a href="#admin" class="nav-link hidden" id="adminLink" onclick="showPage('admin'); return false;">Admin</a>
                     <div class="user-info hidden" id="userInfo">
                         <span id="username"></span>
                         <button class="btn btn-secondary btn-sm" onclick="logout()">Logout</button>
