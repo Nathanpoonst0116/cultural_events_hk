@@ -22,8 +22,6 @@ Before running the project, ensure you have the following installed:
     npm install
     ```
 
-3.  **Verify XML Data**:
-    Ensure `venues.xml` and `events.xml` are present in the root directory.
 
 ## How to Run
 
