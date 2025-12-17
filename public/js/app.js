@@ -587,28 +587,52 @@ function loadMap() {
         map.remove();
         markers = [];
     }
-    
+
     map = L.map('map').setView([22.3193, 114.1694], 11); // Hong Kong center
-    
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
-    
+
     // Load and display venues
     fetch('/api/venues')
         .then(response => response.json())
         .then(venuesData => {
+            // Group by exact lat/lng
+            const groups = new Map(); // key: "lat,lng" -> [{ venue }]
             venuesData.forEach(venue => {
                 if (venue.latitude && venue.longitude) {
-                    const marker = L.marker([venue.latitude, venue.longitude])
-                        .addTo(map)
-                        .bindPopup(`
-                            <strong>${venue.name}</strong><br>
-                            Events: ${venue.events ? venue.events.length : 0}<br>
-                            <a href="#" onclick="showVenueDetail('${venue._id}')">View Details</a>
-                        `);
-                    markers.push(marker);
+                    const key = `${venue.latitude},${venue.longitude}`;
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key).push(venue);
                 }
+            });
+
+            // Create one marker per coordinate group
+            groups.forEach((groupVenues, key) => {
+                const [latStr, lngStr] = key.split(',');
+                const lat = parseFloat(latStr), lng = parseFloat(lngStr);
+
+                const marker = L.marker([lat, lng]).addTo(map);
+
+                // Build popup listing all venues at this coordinate
+                const popupHtml = `
+                    <div style="min-width:220px">
+                        ${groupVenues.map(v => {
+                            const eventsCount = v.events ? v.events.length : 0;
+                            return `
+                                <div style="margin-bottom:8px; border-bottom:1px solid var(--border-color,#e5e7eb); padding-bottom:6px;">
+                                    <strong>${v.name}</strong><br>
+                                    Events: ${eventsCount}<br>
+                                    <a href="#" onclick="showVenueDetail('${v._id}'); return false;">View Details</a>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+
+                marker.bindPopup(popupHtml);
+                markers.push(marker);
             });
         })
         .catch(error => console.error('Error loading venues for map:', error));
