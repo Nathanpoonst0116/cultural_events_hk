@@ -579,15 +579,13 @@ async function importDataFromAPI() {
       console.warn(`[Import] Only ${candidates.length} venues meet the criteria (need 10). Importing what’s available.`);
     }
 
-    // Pick top 10 by number of events (desc), then name asc
-    const selectedVenues = candidates
-      .sort((a, b) => {
-        const ca = eventsByVenue.get(a.id)?.length || 0;
-        const cb = eventsByVenue.get(b.id)?.length || 0;
-        if (cb !== ca) return cb - ca;
-        return a.name.localeCompare(b.name);
-      })
-      .slice(0, 10);
+    // Pick random 10 from candidates (shuffle, then slice)
+    const shuffled = [...candidates];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    const selectedVenues = shuffled.slice(0, 10);
 
     const selectedVenueIds = new Set(selectedVenues.map(v => v.id));
 
