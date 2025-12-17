@@ -76,13 +76,63 @@ function showUserInterface(userData) {
     currentUser = userData;
 
     document.getElementById('loginLink')?.classList.add('hidden');
-    document.getElementById('userInfo')?.classList.remove('hidden');
-    document.getElementById('username').textContent = userData.username;
-
     document.getElementById('venuesLink')?.classList.remove('hidden');
     document.getElementById('mapLink')?.classList.remove('hidden');
     document.getElementById('favoritesLink')?.classList.remove('hidden');
     if (userData.isAdmin) document.getElementById('adminLink')?.classList.remove('hidden');
+
+    // Hide the standalone theme toggle (we add it inside the user menu)
+    document.getElementById('themeToggle')?.classList.add('hidden');
+
+    // Build avatar + dropdown menu in the userInfo slot
+    const userInfo = document.getElementById('userInfo');
+    const initial = (userData.username || '?').charAt(0).toUpperCase();
+    userInfo.classList.remove('hidden');
+    userInfo.innerHTML = `
+      <div class="user-avatar" id="userAvatar" title="${userData.username}">${initial}</div>
+      <div class="user-menu hidden" id="userMenu">
+        <div class="user-menu-header">
+          <i class="fas fa-user-circle"></i>
+          <span id="userMenuName">${userData.username}</span>
+        </div>
+        <div class="user-menu-actions">
+          ${userData.isAdmin ? `<button type="button" class="menu-item" id="menuAdminBtn"><i class="fas fa-tools"></i> Admin Panel</button>` : ''}
+          <button type="button" class="menu-item" id="menuThemeBtn"><i class="fas fa-adjust"></i> Toggle Theme</button>
+          <button type="button" class="menu-item" id="menuLogoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</button>
+        </div>
+      </div>
+    `;
+
+    // Always hide Admin nav link (Admin Panel is in the profile menu)
+    const adminNav = document.getElementById('adminLink');
+    if (adminNav) adminNav.classList.add('hidden');
+
+    // Toggle menu
+    const avatarEl = document.getElementById('userAvatar');
+    const menuEl = document.getElementById('userMenu');
+    avatarEl?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menuEl?.classList.toggle('hidden');
+    });
+    // Close on outside click
+    document.addEventListener('click', () => menuEl?.classList.add('hidden'));
+
+    // Menu actions
+    document.getElementById('menuThemeBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleTheme();
+      menuEl?.classList.add('hidden');
+    });
+    document.getElementById('menuLogoutBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menuEl?.classList.add('hidden');
+      logout();
+    });
+    document.getElementById('menuAdminBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menuEl?.classList.add('hidden');
+      showPage('admin');
+    });
 
     // Hide login page
     const loginPage = document.getElementById('loginPage');
@@ -155,12 +205,14 @@ function logout() {
     })
     .then(() => {
         currentUser = null;
-        document.getElementById('loginLink').classList.remove('hidden');
-        document.getElementById('userInfo').classList.add('hidden');
-        document.getElementById('venuesLink').classList.add('hidden');
-        document.getElementById('mapLink').classList.add('hidden');
-        document.getElementById('favoritesLink').classList.add('hidden');
-        document.getElementById('adminLink').classList.add('hidden');
+        document.getElementById('loginLink')?.classList.remove('hidden');
+        document.getElementById('userInfo')?.classList.add('hidden');
+        document.getElementById('venuesLink')?.classList.add('hidden');
+        document.getElementById('mapLink')?.classList.add('hidden');
+        document.getElementById('favoritesLink')?.classList.add('hidden');
+        document.getElementById('adminLink')?.classList.add('hidden');
+        // Show the header theme toggle back on logout
+        document.getElementById('themeToggle')?.classList.remove('hidden');
         showPage('login');
     })
     .catch(error => console.error('Logout error:', error));
