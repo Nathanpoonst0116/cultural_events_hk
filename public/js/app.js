@@ -361,6 +361,29 @@ function displayVenues(venuesToDisplay) {
   document.getElementById('venuesLoading')?.classList.add('hidden');
 }
 
+// Helper: get current filtered venues based on UI controls
+function getFilteredVenues() {
+  const searchTerm = (document.getElementById('venueSearch')?.value || '').toLowerCase();
+  const areaFilter = (document.getElementById('areaFilter')?.value || '').trim(); // 'hongkong', 'kowloon', etc.
+  const maxDistance = parseFloat(document.getElementById('distanceFilter')?.value) || Infinity;
+
+  return venues.filter(venue => {
+    // Search filter
+    if (searchTerm && !((venue.name || '').toLowerCase().includes(searchTerm))) return false;
+
+    // Region filter (use precomputed venue.region)
+    if (areaFilter && venue.region !== areaFilter) return false;
+
+    // Distance filter
+    if (isFinite(maxDistance) && userLocation && venue.latitude && venue.longitude) {
+      const distance = calculateDistance(userLocation.lat, userLocation.lng, venue.latitude, venue.longitude);
+      if (distance > maxDistance) return false;
+    }
+
+    return true;
+  });
+}
+
 function showCreateEventModal() {
     document.getElementById('createEventModal').classList.remove('hidden');
 }
@@ -433,20 +456,24 @@ function submitNewEvent(e) {
 }
 
 function sortVenues(field) {
+    // Update sort state
     if (sortOrder.field === field) {
         sortOrder.ascending = !sortOrder.ascending;
     } else {
         sortOrder.field = field;
         sortOrder.ascending = true;
     }
-    
-    venues.sort((a, b) => {
+
+    // Sort ONLY the currently filtered list
+    const list = getFilteredVenues().slice();
+
+    list.sort((a, b) => {
         let aValue, bValue;
-        
-        switch(field) {
+
+        switch (field) {
             case 'name':
-                aValue = a.name.toLowerCase();
-                bValue = b.name.toLowerCase();
+                aValue = (a.name || '').toLowerCase();
+                bValue = (b.name || '').toLowerCase();
                 break;
             case 'distance':
                 if (!userLocation || !a.latitude || !b.latitude) {
@@ -458,49 +485,24 @@ function sortVenues(field) {
                 }
                 break;
             case 'events':
-                aValue = a.events ? a.events.length : 0;
-                bValue = b.events ? b.events.length : 0;
+                aValue = Array.isArray(a.events) ? a.events.length : 0;
+                bValue = Array.isArray(b.events) ? b.events.length : 0;
                 break;
+            default:
+                aValue = 0;
+                bValue = 0;
         }
-        
-        if (sortOrder.ascending) {
-            return aValue > bValue ? 1 : -1;
-        } else {
-            return aValue < bValue ? 1 : -1;
-        }
+
+        if (aValue === bValue) return 0;
+        return sortOrder.ascending ? (aValue > bValue ? 1 : -1) : (aValue < bValue ? 1 : -1);
     });
-    
-    displayVenues(venues);
+
+    displayVenues(list);
 }
 
 function filterVenues() {
-    const searchTerm = document.getElementById('venueSearch').value.toLowerCase();
-    const areaFilter = document.getElementById('areaFilter').value; // 'hongkong', 'kowloon', etc.
-    const maxDistance = parseFloat(document.getElementById('distanceFilter').value) || Infinity;
-    
-    let filtered = venues.filter(venue => {
-        // Search filter
-        if (searchTerm && !venue.name.toLowerCase().includes(searchTerm)) {
-            return false;
-        }
-        
-        // PERFECT SCORE FIX: Robust Area Filter
-        // Use the region field we added to the DB
-        if (areaFilter && venue.region !== areaFilter) {
-            return false;
-        }
-        
-        // Distance filter (Keep existing logic)
-        if (userLocation && venue.latitude && venue.longitude) {
-            const distance = calculateDistance(userLocation.lat, userLocation.lng, venue.latitude, venue.longitude);
-            if (distance > maxDistance) {
-                return false;
-            }
-        }
-        
-        return true;
-    });
-    
+    // Render filtered list (no mutation to the global 'venues')
+    const filtered = getFilteredVenues();
     displayVenues(filtered);
 }
 
