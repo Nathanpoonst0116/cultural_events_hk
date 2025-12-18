@@ -751,33 +751,84 @@ function loadMap() {
 }
 
 function getCurrentLocation() {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            position => {
-                userLocation = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude
-                };
-                
-                // Update map if on map page
-                if (map) {
-                    map.setView([userLocation.lat, userLocation.lng], 13);
-                    L.marker([userLocation.lat, userLocation.lng])
-                        .addTo(map)
-                        .bindPopup('Your Location')
-                        .openPopup();
-                }
-                
-                // Re-filter venues
-                filterVenues();
-            },
-            error => {
-                console.error('Error getting location:', error);
-                showToast('Unable to get your location', 'error');
+    if (!('geolocation' in navigator)) {
+        showToast('Geolocation not supported. Using HK center.', 'error');
+        userLocation = { lat: 22.3193, lng: 114.1694 };
+        if (map) {
+            map.setView([userLocation.lat, userLocation.lng], 12);
+            L.marker([userLocation.lat, userLocation.lng]).addTo(map).bindPopup('Approximate location (fallback)').openPopup();
+        }
+        filterVenues();
+        return;
+    }
+
+    const fallbackToHK = (msg = 'Using HK center.') => {
+        showToast(msg, 'error');
+        userLocation = { lat: 22.3193, lng: 114.1694 };
+        if (map) {
+            map.setView([userLocation.lat, userLocation.lng], 12);
+            L.marker([userLocation.lat, userLocation.lng]).addTo(map).bindPopup('Approximate location (fallback)').openPopup();
+        }
+        filterVenues();
+    };
+
+    const options = {
+        enableHighAccuracy: false, // relax accuracy to improve availability
+        timeout: 8000,
+        maximumAge: 300000 // accept cached position up to 5 min
+    };
+
+    let watchId = null;
+    let watchTimer = null;
+
+    const onSuccess = (position) => {
+        if (watchId != null) {
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+        }
+        if (watchTimer) {
+            clearTimeout(watchTimer);
+            watchTimer = null;
+        }
+
+        userLocation = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+        };
+
+        if (map) {
+            map.setView([userLocation.lat, userLocation.lng], 13);
+            L.marker([userLocation.lat, userLocation.lng]).addTo(map).bindPopup('Your Location').openPopup();
+        }
+        filterVenues();
+    };
+
+    const onError = (error) => {
+        console.warn('Geolocation getCurrentPosition error:', error);
+        // Start a short watch fallback to try to obtain a fix
+        watchId = navigator.geolocation.watchPosition(onSuccess, (watchErr) => {
+            console.warn('Geolocation watchPosition error:', watchErr);
+        }, { enableHighAccuracy: false, maximumAge: 0 });
+
+        // If still no fix after 10s, fallback to HK
+        watchTimer = setTimeout(() => {
+            if (watchId != null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
             }
-        );
-    } else {
-        showToast('Geolocation is not supported by your browser', 'error');
+            let msg = 'Unable to get your location.';
+            if (error.code === error.PERMISSION_DENIED) msg = 'Location permission denied.';
+            if (error.code === error.POSITION_UNAVAILABLE) msg = 'Location unavailable.';
+            if (error.code === error.TIMEOUT) msg = 'Location request timed out.';
+            fallbackToHK(`${msg} Using HK center.`);
+        }, 10000);
+    };
+
+    try {
+        navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
+    } catch (e) {
+        console.error('Geolocation exception:', e);
+        fallbackToHK('Geolocation failed.');
     }
 }
 
