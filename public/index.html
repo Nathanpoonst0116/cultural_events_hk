@@ -41,6 +41,7 @@ Date : 18-12-2025
                     <a href="#venues" class="nav-link hidden" id="venuesLink" onclick="showPage('venues'); return false;">Venues</a>
                     <a href="#map" class="nav-link hidden" id="mapLink" onclick="showPage('map'); return false;">Map</a>
                     <a href="#favorites" class="nav-link hidden" id="favoritesLink" onclick="showPage('favorites'); return false;">Favorites</a>
+                    <a href="#picker" class="nav-link hidden" id="pickerLink" onclick="showPage('picker'); return false;">Lucky Draw</a>
                     <a href="#admin" class="nav-link hidden" id="adminLink" onclick="showPage('admin'); return false;">Admin</a>
                     <div class="user-info hidden" id="userInfo">
                         <span id="username"></span>
@@ -135,6 +136,20 @@ Date : 18-12-2025
             <h2>My Favorite Venues</h2>
             <div id="favoritesContent">
                 <div class="loading">Loading favorites...</div>
+            </div>
+        </div>
+
+        <!-- New: Lucky Draw Page -->
+        <div id="pickerPage" class="page">
+            <div class="venue-detail">
+                <h2 class="venue-title">Feeling bored?</h2>
+                <p class="text-secondary mb-3">No idea where to go? Try your luck and discover a random event!</p>
+                <div class="flex gap-2 mb-4">
+                    <button class="btn btn-primary" onclick="luckyDraw()">Lucky Draw!</button>
+                </div>
+                <div id="luckyResult">
+                    <div class="text-secondary">Hit “Lucky Draw!” to pick a random event.</div>
+                </div>
             </div>
         </div>
 

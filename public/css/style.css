@@ -857,7 +857,7 @@ tbody tr:hover {
 .success-message {
   background: rgba(16, 185, 129, 0.1);
   border: 1px solid var(--success-color);
-  color: var(--success-color);
+  color: var (--success-color);
   padding: 1rem;
   border-radius: var(--radius-md);
   margin-bottom: 1rem;
@@ -1026,4 +1026,9 @@ tbody tr:hover {
 }
 .form-check-inline input[type="checkbox"] {
   margin: 0;
+}
+
+/* Lucky Draw tweaks */
+#pickerPage .venue-detail .card {
+  margin-top: 1rem;
 }

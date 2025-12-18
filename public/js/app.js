@@ -100,6 +100,8 @@ function showUserInterface(userData) {
     document.getElementById('venuesLink')?.classList.remove('hidden');
     document.getElementById('mapLink')?.classList.remove('hidden');
     document.getElementById('favoritesLink')?.classList.remove('hidden');
+    // New: reveal Lucky Draw tab
+    document.getElementById('pickerLink')?.classList.remove('hidden');
     if (userData.isAdmin) document.getElementById('adminLink')?.classList.remove('hidden');
 
     // Hide the standalone theme toggle (we add it inside the user menu)
@@ -259,6 +261,7 @@ function showPage(pageId, addToHistory = true) {
     }
     if (pageId === 'map') loadMap();
     if (pageId === 'favorites') loadFavorites();
+    if (pageId === 'picker') loadPickerPage(); // New: initialize picker page
     if (pageId === 'admin' && currentUser?.isAdmin) showAdminTab('users');
     if (pageId === 'venues' || pageId === 'events') {
         loadAndRenderLastUpdated();
@@ -1327,4 +1330,55 @@ function loadAndRenderLastUpdated() {
       }
     })
     .catch(() => {});
+}
+
+// New: Lucky Draw page initialization (optional placeholder)
+function loadPickerPage() {
+    const result = document.getElementById('luckyResult');
+    if (result) {
+        result.innerHTML = `
+            <div class="card">
+                <div class="text-secondary">Hit “Lucky Draw!” to pick a random event.</div>
+            </div>
+        `;
+    }
+}
+
+// New: Lucky Draw handler — fetch events and show a random one
+async function luckyDraw() {
+    const result = document.getElementById('luckyResult');
+    if (!result) return;
+    result.innerHTML = '<div class="loading">Drawing a random event...</div>';
+
+    try {
+        const resp = await fetch('/api/events');
+        const events = await resp.json();
+        if (!Array.isArray(events) || events.length === 0) {
+            result.innerHTML = '<div class="error-message">No events available right now.</div>';
+            return;
+        }
+
+        // Pick a random event
+        const randomIndex = Math.floor(Math.random() * events.length);
+        const ev = events[randomIndex];
+
+        // Render event details
+        result.innerHTML = `
+            <div class="card">
+                <div class="card-title">${ev.title || 'Untitled Event'}</div>
+                <div class="card-content">
+                    <p><strong>Venue:</strong> ${ev.venue?.name || 'N/A'}</p>
+                    <p><strong>Date/Time:</strong> ${ev.dateTime || 'N/A'}</p>
+                    <p>${ev.description || 'No description'}</p>
+                    ${ev.presenter ? `<p><strong>Presenter:</strong> ${ev.presenter}</p>` : ''}
+                    <div class="mt-3">
+                        ${ev.venue?._id ? `<button class="btn btn-sm btn-secondary" onclick="showVenueDetail('${ev.venue._id}')">View Venue</button>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        console.error('Lucky draw error:', e);
+        result.innerHTML = '<div class="error-message">Failed to draw an event. Try again.</div>';
+    }
 }
