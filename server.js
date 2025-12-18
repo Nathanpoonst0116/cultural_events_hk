@@ -340,7 +340,7 @@ app.post('/api/events/:id/like', isAuthenticated, async (req, res) => {
     const event = await Event.findById(req.params.id);
     const userId = req.session.userId;
     
-    const index = event.likes.indexOf(userId);
+    const index = event.likes.findIndex(id => id.toString() === userId.toString());
     let liked = false;
 
     if (index === -1) {
@@ -363,7 +363,7 @@ app.post('/api/venues/:id/like', isAuthenticated, async (req, res) => {
     const venue = await Venue.findById(req.params.id);
     const userId = req.session.userId;
     
-    const index = venue.likes.indexOf(userId);
+    const index = venue.likes.findIndex(id => id.toString() === userId.toString());
     let liked = false;
 
     if (index === -1) {
