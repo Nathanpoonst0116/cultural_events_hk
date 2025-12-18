@@ -302,12 +302,15 @@ app.post('/api/venues/:id/favorite', isAuthenticated, async (req, res) => {
   try {
     const user = await User.findById(req.session.userId);
     const venueId = req.params.id;
-    
-    if (!user.favorites.includes(venueId)) {
-      user.favorites.push(venueId);
-      await user.save();
+    const isFavorite = user.favorites.some(fav => fav.toString() === venueId);
+
+    if (!isFavorite) {
+      await User.updateOne(
+        { _id: user._id },
+        { $addToSet: { favorites: new mongoose.Types.ObjectId(venueId) } }
+      );
     }
-    
+
     res.json({ message: 'Added to favorites' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to add favorite' });
